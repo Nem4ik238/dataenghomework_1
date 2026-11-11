@@ -1,0 +1,22 @@
+version: 2
+
+data_tests:
+  - name: assert_refunds_only_for_returned_orders
+    description: "Возврат допустим только у заказа со статусом returned."
+
+  - name: assert_order_amount_equals_items_sum
+    description: "Сумма заказа в fct_orders равна сумме line_amount его позиций в fct_order_items."
+
+  - name: assert_confirmed_revenue_matches_source
+    description: >
+      Сверка с источником: число и сумма подтверждённых покупок в fct_orders совпадают с тем,
+      что посчитано прямо по сырым таблицам raw.orders и raw.payments.
+
+  - name: assert_returned_orders_fully_refunded
+    description: "По возвращённому заказу деньги вернулись полностью: net_paid_amount = 0."
+
+  - name: assert_confirmed_orders_not_overcharged
+    description: >
+      Подтверждённому заказу не списали больше его суммы. Severity warn: тест находит реальную проблему
+      в данных, которую мы не правим. Найден заказ 113: сумма 200, два успешных списания по 200
+      (платежи 1015 и 1016 с разницей в минуту) — двойное списание, клиенту нужно вернуть 200.

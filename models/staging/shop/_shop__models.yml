@@ -50,6 +50,14 @@ models:
               arguments:
                 to: ref('stg_shop__orders')
                 field: order_id
+      - name: product_id
+        description: "Товар в позиции."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shop__products')
+                field: product_id
       - name: gross_amount
         description: "Сумма позиции до скидки: количество × цена."
       - name: line_amount
@@ -77,3 +85,39 @@ models:
                 values: ['success', 'failed', 'pending']
       - name: is_refund
         description: "Возврат: успешная операция с отрицательной суммой."
+
+  - name: stg_shop__products
+    description: "Товары из источника: одна строка — один товар. Категория — название из справочника категорий."
+    columns:
+      - name: product_id
+        description: "Номер товара."
+        data_tests: [unique, not_null]
+      - name: product_name
+        description: "Название товара."
+      - name: brand
+        description: "Бренд товара."
+      - name: category_name
+        description: "Категория товара (в источнике колонка category). По ней товар связан с деревом категорий."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shop__product_categories')
+                field: category_name
+
+  - name: stg_shop__product_categories
+    description: "Справочник категорий: одна строка — одна категория. Дерево задано через parent_category_id."
+    columns:
+      - name: category_id
+        description: "Номер категории."
+        data_tests: [unique, not_null]
+      - name: parent_category_id
+        description: "Родительская категория; пусто у категорий верхнего уровня."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_shop__product_categories')
+                field: category_id
+      - name: category_name
+        description: "Название категории, уникальное."
+        data_tests: [unique, not_null]

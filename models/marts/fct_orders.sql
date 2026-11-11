@@ -8,6 +8,7 @@ select
     ordered_at,
     order_status,
     order_amount,
+    items_count,
     paid_amount,
     refunded_amount,
     net_paid_amount,

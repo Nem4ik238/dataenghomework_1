@@ -4,26 +4,49 @@ models:
   - name: fct_orders
     description: >
       Факт заказов: одна строка — один заказ. Тестовые заказы исключены.
-      К заказу пристыкованы итоги по платежам; подтверждённая покупка — статус paid
-      и хотя бы одна успешная оплата (возврат оплатой не считается).
+      К заказу пристыкованы итоги по платежам и число товаров. Отвечает на вопросы о заказах и выручке:
+      средний чек по городам, число подтверждённых покупок, сколько оплачено и возвращено.
+      Хранение: distributed by (order_id).
     columns:
       - name: order_id
         description: "Номер заказа."
         data_tests: [unique, not_null]
       - name: customer_id
-        description: "Клиент, оформивший заказ."
+        description: "Клиент, оформивший заказ. Ключ к dim_customers."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
       - name: order_date
-        description: "Дата заказа."
+        description: "Дата заказа. Ключ к dim_dates."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_dates')
+                field: date_day
       - name: ordered_at
         description: "Время оформления заказа."
       - name: order_status
         description: "Статус заказа: paid, pending, returned, cancelled."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['paid', 'pending', 'returned', 'cancelled']
       - name: order_amount
         description: "Сумма заказа в рублях после скидок."
+        data_tests: [not_null, non_negative]
+      - name: items_count
+        description: "Число разных товаров в заказе."
+        data_tests: [non_negative]
       - name: paid_amount
         description: "Сумма успешных оплат без возвратов; 0, если оплат нет."
+        data_tests: [non_negative]
       - name: refunded_amount
         description: "Сумма возвратов положительным числом; 0, если возвратов нет."
+        data_tests: [non_negative]
       - name: net_paid_amount
         description: "Оплачено минус возвращено."
       - name: successful_payments_count
@@ -31,5 +54,163 @@ models:
       - name: first_paid_at
         description: "Время первой успешной оплаты; пусто, если оплат нет."
       - name: is_confirmed
-        description: "Подтверждённая покупка: статус paid и хотя бы одна успешная оплата."
+        description: "{{ doc('confirmed_order') }}"
+        data_tests: [not_null]
+
+  - name: fct_order_items
+    description: >
+      Факт позиций заказа: одна строка — один товар в заказе. Тестовые заказы исключены.
+      Ключи на все измерения: product_id, customer_id, order_date. Отвечает на вопросы о товарах:
+      выручка по месяцам и категориям, какие бренды чаще возвращают.
+      Инкрементальная модель (unique_key = order_item_id). Хранение: distributed by (order_id), колоночная таблица.
+    columns:
+      - name: order_item_id
+        description: "Ключ позиции вида 101-1: номер заказа и номер товара через дефис."
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: "Заказ, в который входит позиция. Ключ к fct_orders."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: product_id
+        description: "Товар. Ключ к dim_products."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
+      - name: customer_id
+        description: "Клиент, оформивший заказ. Ключ к dim_customers."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: order_date
+        description: "Дата заказа. Ключ к dim_dates."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_dates')
+                field: date_day
+      - name: ordered_at
+        description: "Время оформления заказа. По нему инкрементальная модель находит новые строки."
+      - name: order_status
+        description: "Статус заказа: paid, pending, returned, cancelled."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['paid', 'pending', 'returned', 'cancelled']
+      - name: is_confirmed
+        description: "{{ doc('confirmed_order') }}"
+        data_tests: [not_null]
+      - name: quantity
+        description: "Количество единиц товара."
+        data_tests: [not_null, non_negative]
+      - name: unit_price
+        description: "Цена за единицу в рублях."
+        data_tests: [not_null, non_negative]
+      - name: gross_amount
+        description: "Сумма позиции до скидки: количество × цена."
+      - name: discount_amount
+        description: "Скидка на позицию в рублях."
+        data_tests: [non_negative]
+      - name: line_amount
+        description: "Сумма позиции после скидки: количество × цена − скидка."
+        data_tests: [not_null, non_negative]
+
+  - name: dim_customers
+    description: >
+      Измерение клиентов: одна строка — один клиент, включая тех, кто ничего не купил.
+      Отвечает на вопросы о покупателях: доля покупателей по каналам привлечения, города, первая покупка.
+      Хранение: distributed by (customer_id).
+    columns:
+      - name: customer_id
+        description: "Номер клиента."
+        data_tests: [unique, not_null]
+      - name: registered_at
+        description: "Время регистрации."
+      - name: registration_date
+        description: "Дата регистрации без времени."
+      - name: city
+        description: "Город клиента."
+      - name: acquisition_channel
+        description: "Канал привлечения: search, email, organic, social, ads, partner."
+      - name: first_confirmed_order_id
+        description: "Первая подтверждённая покупка: самый ранний заказ, при равном времени — с меньшим номером. Пусто, если покупок нет."
+      - name: first_confirmed_at
+        description: "Время оформления первой подтверждённой покупки. Пусто, если покупок нет."
+      - name: confirmed_orders_count
+        description: "Число подтверждённых покупок; 0, если покупок нет."
+        data_tests: [not_null, non_negative]
+      - name: confirmed_revenue
+        description: "Сумма подтверждённых покупок в рублях по сумме заказа; 0, если покупок нет."
+        data_tests: [not_null, non_negative]
+      - name: is_buyer
+        description: "Есть хотя бы одна подтверждённая покупка."
+        data_tests: [not_null]
+
+  - name: dim_products
+    description: >
+      Измерение товаров: одна строка — один товар с брендом и иерархией категорий до верхнего уровня.
+      Отвечает на вопросы «по категориям» и «по брендам». Хранение: distributed replicated.
+    columns:
+      - name: product_id
+        description: "Номер товара."
+        data_tests: [unique, not_null]
+      - name: product_name
+        description: "Название товара."
+      - name: brand
+        description: "Бренд товара."
+      - name: category_id
+        description: "Номер категории товара."
+        data_tests: [not_null]
+      - name: category_name
+        description: "Категория товара — самый нижний уровень, к которому он привязан."
+      - name: parent_category_name
+        description: "Родительская категория; пусто, если товар привязан к верхнему уровню."
+      - name: root_category_name
+        description: "Категория верхнего уровня: Electronics или Home."
+        data_tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['Electronics', 'Home']
+      - name: category_level
+        description: "Глубина категории товара в дереве: 1 — верхний уровень."
+      - name: category_path
+        description: "Полный путь категории, например Home > Kitchen > Cookware."
+
+  - name: dim_dates
+    description: >
+      Измерение дат: одна строка — один день. Календарь без пропусков от первой до последней даты заказа,
+      нужен для отчётов по дням, месяцам и кварталам. Хранение: distributed replicated.
+    columns:
+      - name: date_day
+        description: "День календаря."
+        data_tests: [unique, not_null]
+      - name: year
+        description: "Год."
+      - name: quarter
+        description: "Квартал: 1–4."
+      - name: month
+        description: "Номер месяца: 1–12."
+      - name: month_name
+        description: "Название месяца по-английски, например March."
+      - name: year_month
+        description: "Год и месяц строкой вида 2026-03, удобно для группировки по месяцам."
+      - name: day_of_month
+        description: "Число месяца."
+      - name: day_of_week
+        description: "День недели по ISO: 1 — понедельник, 7 — воскресенье."
+      - name: day_of_week_name
+        description: "Название дня недели по-английски, например Monday."
+      - name: is_weekend
+        description: "Суббота или воскресенье."
         data_tests: [not_null]
